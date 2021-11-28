@@ -1,5 +1,5 @@
 SAMPLES = ["X"]
-TOOLS = ["bowtie2", "hisat2"]
+TOOLS = ["hisat2"]
 
 rule all:
     input:
@@ -7,17 +7,6 @@ rule all:
         expand("{sample}_hisat2.gtf", sample=SAMPLES),
         expand("{sample}_kallisto/abundance.tsv", sample=SAMPLES),
         expand("{sample}_trinity.blast.gff", sample=SAMPLES)
-
-rule bowtie2:
-    input:
-        reads="{sample}.fastq",
-        index="Bowtie2Index/genome.1.bt2" # this file is just there to make sure the index is present
-    output:
-        temp("{sample}_bowtie2.sam") # temp() removes the sam file when the pipeline is done
-    params:
-        index="Bowtie2Index/genome" # the index is actually a group of files with this prefix
-    shell:
-        "bowtie2 -x {params.index} -r {input.reads} -S {output}"
 
 rule hisat2:
     input:
@@ -31,7 +20,7 @@ rule hisat2:
     shell:
         "hisat2 -p {threads} -x {params.index} -q {input.reads} -S {output}"
 
-rule sort_sam: # works for both bowtie2 and hisat2
+rule sort_sam: 
     input:
         "{sample}_{tool}.sam"
     output:
@@ -39,7 +28,7 @@ rule sort_sam: # works for both bowtie2 and hisat2
     shell:
         "samtools sort -o {output} {input}"
 
-rule index_bam: # works for both bowtie2 and hisat2
+rule index_bam: 
     input:
         "{sample}_{tool}.bam"
     output:
