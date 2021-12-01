@@ -1,118 +1,66 @@
-SAMPLES = ["X"]
-TOOLS = ["bowtie2", "hisat2"]
+SAMPLES = ["Leaf51", "Axenic", "Leaf49", "Leaf137", "Leaf405", "Leaf177", "Leaf257"]
+EXPANSION = ["1", "2", "3"]
 
 rule all:
     input:
-        expand("{sample}_{tool}.bam.bai", sample=SAMPLES, tool=TOOLS),
-        expand("{sample}_hisat2.gtf", sample=SAMPLES),
-        expand("{sample}_kallisto/abundance.tsv", sample=SAMPLES),
-        expand("{sample}_trinity.blast.gff", sample=SAMPLES)
-
-rule bowtie2:
-    input:
-        reads="{sample}.fastq",
-        index="Bowtie2Index/genome.1.bt2" # this file is just there to make sure the index is present
-    output:
-        temp("{sample}_bowtie2.sam") # temp() removes the sam file when the pipeline is done
-    params:
-        index="Bowtie2Index/genome" # the index is actually a group of files with this prefix
-    shell:
-        "bowtie2 -x {params.index} -r {input.reads} -S {output}"
+        expand("output/hisat2/{sample}_{expansion}.bam.bai", sample=SAMPLES, expansion=EXPANSION),
+        ".lock"
 
 rule hisat2:
     input:
-        reads="{sample}.fastq",
-        index="TAIR.1.ht2" # this file is just there to make sure the index is present
+        reads="Samples/{sample}_{expansion}.fastq.gz",
+        index="Samples/genomes/Arabidopsis_thaliana/TAIR.1.ht2" # this file is just there to make sure the index is present
     output:
-        temp("{sample}_hisat2.sam") # temp() removes the sam file when the pipeline is done
+        temp("output/hisat2/{sample}_{expansion}.sam") \
+        # temp() removes the sam file when the pipeline is done
     params:
-        index="TAIR" # the index is actually a group of files with this prefix
+        index="Samples/genomes/Arabidopsis_thaliana/TAIR" \
+        # the index is actually a group of files with this prefix
     threads: 1 # to avoid too much load on Altschul
     shell:
-        "hisat2 -p {threads} -x {params.index} -q {input.reads} -S {output}"
+        "hisat2 -p {threads} -x {params.index} -U {input.reads} -S {output} --dta"
 
-rule sort_sam: # works for both bowtie2 and hisat2
+rule sort_sam:
     input:
-        "{sample}_{tool}.sam"
+        "output/hisat2/{sample}_{expansion}.sam"
     output:
-        "{sample}_{tool}.bam"
+        "output/hisat2/{sample}_{expansion}.bam"
     shell:
         "samtools sort -o {output} {input}"
 
-rule index_bam: # works for both bowtie2 and hisat2
+rule index_bam:
     input:
-        "{sample}_{tool}.bam"
+        "output/hisat2/{sample}_{expansion}.bam"
     output:
-        "{sample}_{tool}.bam.bai"
+        "output/hisat2/{sample}_{expansion}.bam.bai"
     shell:
         "samtools index {input}"
 
 rule stringtie:
     input:
-        bamfile="{sample}_hisat2.bam", # stringtie is only used after hisat2
-        annotation="genes.gtf"
+        bamfile="output/hisat2/{sample}_{expansion}.bam", # stringtie is only used after hisat2
+        #annotation="Samples/genomes/Arabidopsis_thaliana/Araport11_GTF_cleaned_chromosome_names.gtf"
+        annotation="Samples/genomes/Arabidopsis_thaliana/genes.gtf"
     output:
-        "{sample}_hisat2.gtf"
+        "output/stringtie/{sample}_{expansion}/{sample}_{expansion}.gtf"
     params:
-        label="{sample}"
+        label="{sample}_{expansion}"
     shell:
-        "stringtie -G {input.annotation} -o {output} -l {params.label} {input.bamfile}"
+        "stringtie -e -G {input.annotation} -o {output} -l {params.label} {input.bamfile}"
 
-rule trinity:
+rule prepDE:
     input:
-        "{sample}.fastq"
+        expand("output/stringtie/{sample}_{expansion}/{sample}_{expansion}.gtf", sample=SAMPLES, expansion=EXPANSION)
     output:
-        "{sample}_trinity/Trinity.fasta"
-    params:
-        seqtype="fq",
-        maxmem="10G",
-        outdir="{sample}_trinity"
+        "output/prepDE/gene_count_matrix.csv",
+        "output/prepDE/transcript_count_matrix.csv"
     shell:
-        "Trinity --seqType {params.seqtype} --max_memory {params.maxmem} --output {params.outdir} --single {input}"
+        "python3 Scripts/prepDE.py -i output/stringtie -g output/prepDE/gene_count_matrix.csv -t output/prepDE/transcript_count_matrix.csv"
 
-rule kallisto:
+rule DESeq:
     input:
-        reads="{sample}.fastq",
-        index="TAIR.idx"
+        "output/prepDE/gene_count_matrix.csv"
     output:
-        "{sample}_kallisto/abundance.tsv"
-    params:
-        length=200,
-        sd=20,
-        outdir="{sample}_kallisto"
-    threads: 1
+        ".lock"
     shell:
-        "kallisto quant -i {input.index} -o {params.outdir} --single -l {params.length} -s {params.sd} -t {threads} {input.reads}"
-
-rule make_blastdb:
-    input:
-        "genome.fa"
-    output:
-        "TAIR10.nhr" # just one of the files of the blast database
-    params:
-        db="TAIR10",
-        type="nucl"
-    shell:
-        "makeblastdb -in {input} -dbtype {params.type} -out {params.db}"
-
-rule blastn:
-    input:
-        query="{sample}_trinity/Trinity.fasta/Trinity.fasta",
-        db="TAIR10.nhr"
-    output:
-        file="{sample}_trinity.blast"
-    params:
-        db="TAIR10",
-        evalue="1e-10",
-        format=7
-    shell:
-        "blastn -query {input.query} -db {params.db} -evalue {params.evalue} -outfmt {params.format} -out {output.file}"
-
-rule blast2gff:
-    input:
-        "{sample}_trinity.blast"
-    output:
-        "{sample}_trinity.blast.gff"
-    shell:
-        "Rscript blast2gff.R {input}"
-
+        "Rscript"

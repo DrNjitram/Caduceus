@@ -1,5 +1,12 @@
 *.gz
 *.fastq
+.snakemake/
+*.bam
+*.bai
+*.fastq
+*.gz
+*.gtf
+*.ht2
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
