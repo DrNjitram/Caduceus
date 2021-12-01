@@ -6,6 +6,7 @@ rule all:
         expand("output/hisat2/{sample}_{expansion}.bam.bai", sample=SAMPLES, expansion=EXPANSION),
         ".lock"
 
+
 rule hisat2:
     input:
         reads="Samples/{sample}_{expansion}.fastq.gz",
